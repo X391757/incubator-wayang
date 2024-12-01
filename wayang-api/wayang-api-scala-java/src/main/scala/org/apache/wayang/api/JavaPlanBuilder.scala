@@ -25,11 +25,14 @@ import java.util.{Collection => JavaCollection}
 import org.apache.commons.lang3.Validate
 import org.apache.wayang.api.util.DataQuantaBuilderCache
 import org.apache.wayang.basic.data.Record
-import org.apache.wayang.basic.operators.{TableSource, TextFileSource, KafkaTopicSource}
+import org.apache.wayang.basic.operators.{TableSource, TextFileSource, KafkaTopicSource, ParquetFileSource}
 import org.apache.wayang.commons.util.profiledb.model.Experiment
 import org.apache.wayang.core.api.WayangContext
 import org.apache.wayang.core.plan.wayangplan._
 import org.apache.wayang.core.types.DataSetType
+import com.google.protobuf.DynamicMessage
+import com.google.protobuf.Descriptors.Descriptor
+
 
 import scala.reflect.ClassTag
 
@@ -61,6 +64,19 @@ class JavaPlanBuilder(wayangCtx: WayangContext, jobName: String) {
     */
   def readTextFile(url: String): UnarySourceDataQuantaBuilder[UnarySourceDataQuantaBuilder[_, String], String] =
   createSourceBuilder(new TextFileSource(url))(ClassTag(classOf[String]))
+
+  /**
+    * Reads a Parquet file containing data serialized using Protocol Buffers.
+    * This method creates a {@link ParquetFileSource} operator for reading data from a Parquet file.
+    * The data in the Parquet file is assumed to be serialized using Protocol Buffers, 
+    * and the schema is provided via the `descriptor` parameter.
+    * 
+    * @param inputUrl the URL or file path to the Parquet file to be read
+    * @param descriptor the Protobuf {@link Descriptor} that describes the schema of the data in the Parquet file
+    * @return [[DataQuantaBuilder]] for the file
+    */
+  def readParquetFile(url: String, descriptor: Descriptor): UnarySourceDataQuantaBuilder[UnarySourceDataQuantaBuilder[_, DynamicMessage], DynamicMessage] =
+  createSourceBuilder(new ParquetFileSource(url, descriptor))(ClassTag(classOf[DynamicMessage]))
 
   /**
    * Read a textmessages from a Kafka topic and provide it as a dataset of [[String]]s, one per message.
