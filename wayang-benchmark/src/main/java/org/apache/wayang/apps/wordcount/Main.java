@@ -27,6 +27,10 @@ import org.apache.wayang.core.util.ReflectionUtils;
 import org.apache.wayang.java.Java;
 import org.apache.wayang.java.platform.JavaPlatform;
 import org.apache.wayang.spark.Spark;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.parquet.avro.AvroParquetReader;
+import org.apache.parquet.hadoop.ParquetReader;
+import org.apache.hadoop.fs.Path;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -38,68 +42,57 @@ import java.util.List;
 public class Main {
 
     public static void main(String[] args) throws IOException, URISyntaxException {
-        try {
-            if (args.length == 0) {
-                System.err.print("Usage: <platform1>[,<platform2>]* <input file URL>");
-                System.exit(1);
-            }
-
-            WayangContext wayangContext = new WayangContext();
-            for (String platform : args[0].split(",")) {
-                switch (platform) {
-                    case "java":
-                        wayangContext.register(Java.basicPlugin());
-                        break;
-                    case "spark":
-                        wayangContext.register(Spark.basicPlugin());
-                        break;
-                    default:
-                        System.err.format("Unknown platform: \"%s\"\n", platform);
-                        System.exit(3);
-                        return;
-                }
-            }
-
-            /* Get a plan builder */
-            JavaPlanBuilder planBuilder = new JavaPlanBuilder(wayangContext)
-                    .withJobName("WordCount")
-                    .withUdfJarOf(Main.class);
-
-            /* Start building the Apache WayangPlan */
-            Collection<Tuple2<String, Integer>> wordcounts = planBuilder
-                    /* Read the text file */
-                    .readTextFile(args[1]).withName("Load file")
-
-                    /* Split each line by non-word characters */
-                    .flatMap(line -> Arrays.asList(line.split("\\W+")))
-                    .withSelectivity(1, 100, 0.9)
-                    .withName("Split words")
-
-                    /* Filter empty tokens */
-                    .filter(token -> !token.isEmpty())
-                    .withName("Filter empty words")
-
-                    /* Attach counter to each word */
-                    .map(word -> new Tuple2<>(word.toLowerCase(), 1)).withName("To lower case, add counter")
-
-                    // Sum up counters for every word.
-                    .reduceByKey(
-                            Tuple2::getField0,
-                            (t1, t2) -> new Tuple2<>(t1.getField0(), t1.getField1() + t2.getField1())
-                    )
-                    .withName("Add counters")
-
-                    /* Execute the plan and collect the results */
-                    .collect();
-
-
-            System.out.printf("Found %d words:\n", wordcounts.size());
-            wordcounts.forEach(wc -> System.out.printf("%dx %s\n", wc.field1, wc.field0));
-        } catch (Exception e) {
-            System.err.println("App failed.");
-            e.printStackTrace();
-            System.exit(4);
+        if (args.length < 2) {
+            System.err.println("Usage: <platform1>[,<platform2>]* <input parquet file>");
+            System.exit(1);
         }
+
+        WayangContext wayangContext = new WayangContext();
+        for (String platform : args[0].split(",")) {
+            switch (platform) {
+                case "java":
+                    wayangContext.register(Java.basicPlugin());
+                    break;
+                case "spark":
+                    wayangContext.register(Spark.basicPlugin());
+                    break;
+                default:
+                    System.err.format("Unknown platform: \"%s\"\n", platform);
+                    System.exit(3);
+                    return;
+            }
+        }
+        long stime = System.currentTimeMillis();
+        JavaPlanBuilder planBuilder = new JavaPlanBuilder(wayangContext)
+                .withJobName("Parquet Analysis")
+                .withUdfJarOf(Main.class);
+        Collection<Tuple2<String, Integer>> valueCounts = planBuilder
+                .readParquetFile(args[1]) // Assuming a method that supports reading directly into GenericRecords
+                .withName("Load Parquet file")
+
+                .map(record -> {
+                    Object columnValue = record.get("DEP_TIME"); // Access by column name
+                    return columnValue != null ? columnValue.toString() : "null";
+                })
+                .withName("Extract target column")
+
+                .filter(value -> !value.equals("null"))
+                .withName("Filter null values")
+
+                .map(value -> new Tuple2<>(value, 1))
+                .withName("Add counter")
+
+                .reduceByKey(
+                        Tuple2::getField0,
+                        (t1, t2) -> new Tuple2<>(t1.getField0(), t1.getField1() + t2.getField1())
+                )
+                .withName("Count values")
+
+                .collect();
+        long etime = System.currentTimeMillis();
+        System.out.printf("Found %d distinct values:\n", valueCounts.size());
+        valueCounts.forEach(count -> System.out.printf("%dx %s\n", count.field1, count.field0));
+        System.out.printf("runtime %d ms.", (etime - stime));
     }
 }
 

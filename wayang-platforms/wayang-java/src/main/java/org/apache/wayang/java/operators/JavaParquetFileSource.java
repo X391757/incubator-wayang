@@ -16,8 +16,12 @@
  * limitations under the License.
  */
 package org.apache.wayang.java.operators;
-import com.google.protobuf.Descriptors.Descriptor;
-import com.google.protobuf.DynamicMessage;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.parquet.avro.AvroParquetReader;
+import org.apache.parquet.hadoop.ParquetReader;
+import org.apache.parquet.hadoop.util.HadoopInputFile;
+import org.apache.parquet.io.InputFile;
 import org.apache.wayang.basic.operators.ParquetFileSource;
 import org.apache.wayang.core.api.exception.WayangException;
 import org.apache.wayang.core.optimizer.OptimizationContext;
@@ -28,9 +32,6 @@ import org.apache.wayang.core.platform.lineage.ExecutionLineageNode;
 import org.apache.wayang.java.channels.StreamChannel;
 import org.apache.wayang.java.execution.JavaExecutor;
 import org.apache.wayang.core.util.Tuple;
-import org.apache.parquet.hadoop.ParquetReader;
-import org.apache.parquet.proto.ProtoParquetReader;
-import org.apache.parquet.proto.ProtoReadSupport;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,21 +44,16 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * This is the platform-specific execution operator that implements the {@link ParquetFileSource}.
+ * This is the platform-specific execution operator that implements the {@link ParquetFileSource} for Avro format.
  */
 public class JavaParquetFileSource extends ParquetFileSource implements JavaExecutionOperator {
 
     private static final Logger logger = LoggerFactory.getLogger(JavaParquetFileSource.class);
 
-    public JavaParquetFileSource(String inputUrl, Descriptor descriptor) {
-        super(inputUrl, descriptor);
+    public JavaParquetFileSource(String inputUrl) {
+        super(inputUrl);
     }
-
-    /**
-     * Copies an instance (exclusive of broadcasts).
-     *
-     * @param that the instance to copy.
-     */
+    
     public JavaParquetFileSource(ParquetFileSource that) {
         super(that);
     }
@@ -73,27 +69,30 @@ public class JavaParquetFileSource extends ParquetFileSource implements JavaExec
         assert outputs.length == this.getNumOutputs();
 
         String inputUrl = this.getInputUrl();
-
+        Path path = new Path(inputUrl);
         try {
-            // Configure Protobuf Descriptor in the Hadoop Configuration
-            org.apache.hadoop.conf.Configuration conf = new org.apache.hadoop.conf.Configuration();
-            conf.set(ProtoReadSupport.PB_CLASS, this.getDescriptor().getFullName());
-
-            // Create a ProtoParquetReader
-            try (ParquetReader<DynamicMessage> reader = ProtoParquetReader.<DynamicMessage>builder(new Path(inputUrl))
-                    .withConf(conf)
+            InputFile inputFile = HadoopInputFile.fromPath(path, new Configuration());
+            // Create an AvroParquetReader
+            try (ParquetReader<GenericRecord> reader = AvroParquetReader.<GenericRecord>builder(inputFile)
                     .build()) {
-
-                Stream<DynamicMessage> messageStream = Stream.generate(() -> {
+                Stream<GenericRecord> recordStream = Stream.generate(() -> {
                     try {
                         return reader.read();
                     } catch (IOException e) {
-                        throw new WayangException(String.format("Error reading Parquet file at %s.", inputUrl), e);
+                        throw new RuntimeException("Error closing ParquetReader", e);
                     }
-                }).takeWhile(message -> message != null);
+                })
+                .takeWhile(record -> record != null) // Stop the stream when no more records are found
+                .onClose(() -> {
+                    try {
+                        reader.close();
+                    } catch (IOException e) {
+                        throw new RuntimeException("Error closing ParquetReader", e);
+                    }
+                });
 
                 // Pass the stream to the output channel
-                ((StreamChannel.Instance) outputs[0]).accept(messageStream);
+                ((StreamChannel.Instance) outputs[0]).accept(recordStream);
 
             } catch (IOException e) {
                 throw new WayangException(String.format("Failed to read from Parquet file at %s.", inputUrl), e);
@@ -125,7 +124,7 @@ public class JavaParquetFileSource extends ParquetFileSource implements JavaExec
 
     @Override
     public JavaParquetFileSource copy() {
-        return new JavaParquetFileSource(this.getInputUrl(), this.getDescriptor());
+        return new JavaParquetFileSource(this.getInputUrl());
     }
 
     @Override
@@ -139,3 +138,4 @@ public class JavaParquetFileSource extends ParquetFileSource implements JavaExec
         return Collections.singletonList(StreamChannel.DESCRIPTOR);
     }
 }
+

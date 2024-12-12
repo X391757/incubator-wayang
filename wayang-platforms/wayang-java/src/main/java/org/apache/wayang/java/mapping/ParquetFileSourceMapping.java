@@ -16,7 +16,6 @@
  * limitations under the License.
  */
 package org.apache.wayang.java.mapping;
-import com.google.protobuf.Descriptors.Descriptor;
 import org.apache.wayang.basic.operators.ParquetFileSource;
 import org.apache.wayang.core.mapping.Mapping;
 import org.apache.wayang.core.mapping.OperatorPattern;
@@ -33,7 +32,6 @@ import java.util.Collections;
 /**
  * Mapping from {@link ParquetFileSource} to {@link JavaParquetFileSource}.
  */
-@SuppressWarnings("unchecked")
 public class ParquetFileSourceMapping implements Mapping {
 
     @Override
@@ -50,10 +48,8 @@ public class ParquetFileSourceMapping implements Mapping {
      */
     private SubplanPattern createSubplanPattern() {
         final OperatorPattern operatorPattern = new OperatorPattern(
-                "parquetFileSource",
-                new ParquetFileSource(null, (Descriptor) null), // Create a dummy ParquetFileSource
-                false
-        );
+                "source",
+                new org.apache.wayang.basic.operators.ParquetFileSource((String)null), false);
         return SubplanPattern.createSingleton(operatorPattern);
     }
 
@@ -62,10 +58,7 @@ public class ParquetFileSourceMapping implements Mapping {
      */
     private ReplacementSubplanFactory createReplacementSubplanFactory() {
         return new ReplacementSubplanFactory.OfSingleOperators<ParquetFileSource>(
-                (matchedOperator, epoch) -> new JavaParquetFileSource(
-                        matchedOperator.getInputUrl(),
-                        matchedOperator.getDescriptor()
-                ).at(epoch)
+                (matchedOperator, epoch) -> new JavaParquetFileSource(matchedOperator).at(epoch)
         );
     }
 }

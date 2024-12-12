@@ -30,8 +30,7 @@ import org.apache.wayang.commons.util.profiledb.model.Experiment
 import org.apache.wayang.core.api.WayangContext
 import org.apache.wayang.core.plan.wayangplan._
 import org.apache.wayang.core.types.DataSetType
-import com.google.protobuf.DynamicMessage
-import com.google.protobuf.Descriptors.Descriptor
+import org.apache.avro.generic.GenericRecord;
 
 
 import scala.reflect.ClassTag
@@ -66,17 +65,15 @@ class JavaPlanBuilder(wayangCtx: WayangContext, jobName: String) {
   createSourceBuilder(new TextFileSource(url))(ClassTag(classOf[String]))
 
   /**
-    * Reads a Parquet file containing data serialized using Protocol Buffers.
-    * This method creates a {@link ParquetFileSource} operator for reading data from a Parquet file.
-    * The data in the Parquet file is assumed to be serialized using Protocol Buffers, 
-    * and the schema is provided via the `descriptor` parameter.
-    * 
-    * @param inputUrl the URL or file path to the Parquet file to be read
-    * @param descriptor the Protobuf {@link Descriptor} that describes the schema of the data in the Parquet file
-    * @return [[DataQuantaBuilder]] for the file
-    */
-  def readParquetFile(url: String, descriptor: Descriptor): UnarySourceDataQuantaBuilder[UnarySourceDataQuantaBuilder[_, DynamicMessage], DynamicMessage] =
-  createSourceBuilder(new ParquetFileSource(url, descriptor))(ClassTag(classOf[DynamicMessage]))
+  * Reads a Parquet file containing data serialized using Avro.
+  * This method creates a `ParquetFileSource` operator for reading data from a Parquet file.
+  * The data in the Parquet file is assumed to be serialized using Avro.
+  *
+  * @param inputUrl the URL or file path to the Parquet file to be read
+  * @return DataQuantaBuilder for the file
+  */
+def readParquetFile(url: String): UnarySourceDataQuantaBuilder[UnarySourceDataQuantaBuilder[_, GenericRecord], GenericRecord] =
+  createSourceBuilder(new ParquetFileSource(url))(ClassTag(classOf[GenericRecord]))
 
   /**
    * Read a textmessages from a Kafka topic and provide it as a dataset of [[String]]s, one per message.

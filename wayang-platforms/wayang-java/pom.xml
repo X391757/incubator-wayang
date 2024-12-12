@@ -48,12 +48,17 @@
         <dependency>
             <groupId>org.apache.parquet</groupId>
             <artifactId>parquet-hadoop</artifactId>
-            <version>1.14.4</version> <!-- Verify to use the latest compatible version -->
+            <version>1.13.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.parquet</groupId>
-            <artifactId>parquet-protobuf</artifactId>
-            <version>1.14.4</version> <!-- Verify to use the latest compatible version -->
+            <artifactId>parquet-avro</artifactId>
+            <version>1.12.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.avro</groupId>
+            <artifactId>avro</artifactId>
+            <version>1.10.2</version>
         </dependency>
         <dependency>
             <groupId>org.apache.wayang</groupId>
